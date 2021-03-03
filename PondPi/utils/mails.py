@@ -1,8 +1,11 @@
 import os
 import smtplib
+import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from string import Template
+
+logger = logging.getLogger('PondPiLog')
 
 s = smtplib.SMTP(host='SSL0.OVH.NET', port=587)
 s.starttls()
@@ -19,15 +22,15 @@ def read_template(filename):
     return Template(template_file_content)
 
 def send_mail(email):
-
+    logger.info("EMAIL send to {}".format(email))
     msg = MIMEMultipart()
-    mail_message_path = os.path.dirname(os.path.realpath(__file__))+"/template/message.txt"
+    mail_message_path = os.path.dirname(os.path.realpath(__file__))+"/../template/message.txt"
     message_template = read_template(mail_message_path)
     message = message_template.substitute()
 
     msg['From']="valentin@gianninou.fr"
     msg['To']=email
-    msg['Subject']="PondPi alerte"
+    msg['Subject']="PondPi alert"
 
     # add in the message body
     msg.attach(MIMEText(message, 'plain'))

@@ -3,11 +3,30 @@ import argparse
 import sys
 import time
 import random
+import logging
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from waveshare_epd import epd2in13_V2
 from PIL import Image,ImageDraw,ImageFont
 import RPi.GPIO as GPIO
+from utils.mails import send_mail
 
-from mails import send_mail
+logger = logging.getLogger('PondPiLog')
+logger.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s :: %(levelname)s :: %(message)s')
+file_handler = RotatingFileHandler('activity.log', 'a', 10000000, 10)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+
+grapher = logging.getLogger('PondPiGraph')
+grapher.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s:%(message)s')
+graph_handler = TimedRotatingFileHandler('graph.log', "d", 1, 365)
+graph_handler.setLevel(logging.INFO)
+graph_handler.setFormatter(formatter)
+grapher.addHandler(graph_handler)
+
 
 font20 = ImageFont.truetype('Font.ttc', 20)
 
@@ -68,9 +87,11 @@ class PondPi:
         self.pump2 = get_GPIO(PIN_PUMP2)
         self.UV = get_GPIO(PIN_UV)
         # Get from captor
-        self.water_level = False if random.randint(0, 10)==0 else True
+        self.water_level = False if random.randint(0, 1)==0 else True
+        grapher.info("{},{},{},{},{},{},{},{}".format(self.temp1, self.temp2, self.temp_air, self.moisture, self.pump1, self.pump2, self.UV, self.water_level))
 
     def cut_pumps(self):
+        logger.info('WATER LOW -> Cut pumps')
         self.pump1 = False
         self.pump2 = False
         self.UV = False
@@ -79,28 +100,31 @@ class PondPi:
 
     def process_values(self):
         if not self.water_level:
-            print("Cut pumps")
             self.cut_pumps()
 
     def set_values(self, pump1, pump2, UV):
         if pump1:
+            logger.info("SET : pump1 -> {}".format(pump1))
             self.pump1 = True if pump1=="ON" else False
             set_GPIO(PIN_PUMP1, self.pump1)
         if pump2:
+            logger.info("SET : pump2 -> {}".format(pump2))
             self.pump2 = True if pump2=="ON" else False
             set_GPIO(PIN_PUMP2, self.pump2)
         if UV:
+            logger.info("SET : UV -> {}".format(UV))
             self.UV = True if UV=="ON" else Fals
             set_GPIO(PIN_UV, self.UV)
 
 
 def set_GPIO(pin, status):
     print("Set {} for PIN {}".format(status, pin))
+    logger.debug("GPIO SET {} for PIN {}".format(status, pin))
     GPIO.output(pin, status)
 
 def get_GPIO(pin):
     value = GPIO.input(pin)
-    print("Get value PIN {} : {}".format(pin, value))
+    logger.debug("Get value PIN {} : {}".format(pin, value))
     return value
 
 if __name__ == "__main__":
@@ -120,16 +144,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    print("Start PondPi")
     pp = PondPi()
 
     if args.action == "cron":
         # cron: each 30s
-        print("Get Values")
         pp.get_values()
-        print("Process values")
         pp.process_values()
-        print("Print values")
         pp.update_screen()
 
     if args.action == "clear":
