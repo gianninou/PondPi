@@ -7,6 +7,8 @@ from waveshare_epd import epd2in13_V2
 from PIL import Image,ImageDraw,ImageFont
 import RPi.GPIO as GPIO
 
+from mails import send_mail
+
 font20 = ImageFont.truetype('Font.ttc', 20)
 
 BLACK=0
@@ -17,6 +19,8 @@ PIN_PUMP2 = 23
 PIN_UV = 25
 
 epd = epd2in13_V2.EPD()
+
+EMAIL_RECIPIENT = "valentin.giannini@gmail.com"
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
@@ -70,6 +74,8 @@ class PondPi:
         self.pump1 = False
         self.pump2 = False
         self.UV = False
+        send_mail(EMAIL_RECIPIENT)
+
 
     def process_values(self):
         if not self.water_level:
