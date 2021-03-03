@@ -15,5 +15,3 @@ Finally, if a camera is installed, pictures could be made of the pond or the fil
 ## Installation
 
 ## Contact
-
-s
