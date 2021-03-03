@@ -1,4 +1,4 @@
-# PondPi
+
 
 ## The project
 
@@ -10,6 +10,10 @@ It is also possible to cut the UV or a pump for winter.
 The PI is also connected to some temp sensor and displays information on a epaper screen.
 
 Finally, if a camera is installed, pictures could be made of the pond or the filtration system for example and send via SFTP.
+
+## basic schema
+
+![PondPi schema](PondPi_schema.png)
 
 
 ## Installation
