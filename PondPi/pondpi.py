@@ -1,14 +1,36 @@
 
+import RPi.GPIO as GPIO
+
+GPIO.setwarnings(False) # Ignore warning for now
+GPIO.setmode(GPIO.BCM)
+
 import argparse
+import logging
+import os
+import random
 import sys
 import time
-import random
-import logging
+import yaml
+
+from datetime import datetime
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
-from waveshare_epd import epd2in13_V2
-from PIL import Image,ImageDraw,ImageFont
-import RPi.GPIO as GPIO
-from utils.mails import send_mail
+from functools import reduce
+
+import utils.mails
+import utils.sensors
+import utils.relays
+
+
+#######################################
+# YAML CONFIG FILE LOADING
+#######################################
+
+yaml_file = open("conf/conf.yml", 'r')
+yaml_content = yaml.safe_load(yaml_file)
+
+#######################################
+# LOGGER DEFINITION
+#######################################
 
 logger = logging.getLogger('PondPiLog')
 logger.setLevel(logging.DEBUG)
@@ -18,7 +40,6 @@ file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
-
 grapher = logging.getLogger('PondPiGraph')
 grapher.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s:%(message)s')
@@ -27,138 +48,271 @@ graph_handler.setLevel(logging.INFO)
 graph_handler.setFormatter(formatter)
 grapher.addHandler(graph_handler)
 
+#######################################
+# GET MAIL CONTANTS
+#######################################
 
-font20 = ImageFont.truetype('Font.ttc', 20)
+MAIL_HOST = yaml_content.get("mail").get("host")
+MAIL_PORT = yaml_content.get("mail").get("port")
+MAIL_USER = yaml_content.get("mail").get("user")
+MAIL_PASSWORD = yaml_content.get("mail").get("password")
+MAIL_RECIPIENTS = yaml_content.get("mail").get("recipients")
 
-BLACK=0
-WHITE=255
+BACKUP_FILE = yaml_content.get("global").get("BACKUP_FILE")
+ALERT_FILE = yaml_content.get("global").get("ALERT_FILE")
+ALERT_FILE_HISTORY = yaml_content.get("global").get("ALERT_FILE_HISTORY")
 
-PIN_PUMP1 = 27
-PIN_PUMP2 = 23
-PIN_UV = 25
-
-epd = epd2in13_V2.EPD()
-
-EMAIL_RECIPIENT = "valentin.giannini@gmail.com"
-
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
-GPIO.setup(PIN_PUMP1, GPIO.OUT)
-GPIO.setup(PIN_PUMP2, GPIO.OUT)
-GPIO.setup(PIN_UV, GPIO.OUT)
+#######################################
+# PondPi class
+#######################################
 
 class PondPi:
 
-    temp1 = temp2 = temp_air = moisture = pump1 = pump2 = UV = water_level = 0
+    relays = None
+    sensors = None
 
-    def update_screen(self):
-        epd.init(epd.FULL_UPDATE)
-        time_image = Image.new('1', (epd.height, epd.width), 255)
-        time_draw = ImageDraw.Draw(time_image)
-        epd.displayPartBaseImage(epd.getbuffer(time_image))
-        epd.init(epd.PART_UPDATE)
+    def __init__(self, sensors, relays):
+        """ Initialize the object with a list of sensors and a list of relays"""
+        self.sensors = sensors
+        self.relays = relays
 
-        time_draw.rectangle((0, 0, 240, 120), fill=WHITE)
-        time_draw.text((0, 10), "Temp1: {}°".format(self.temp1), font=font20, fill=BLACK)
-        time_draw.text((125, 10), "Air: {}°".format(self.temp_air), font=font20, fill=BLACK)
+    @staticmethod
+    def load_from_yaml(yaml_content):
+        """ Create a PondPi object from the conf YAML file """
+        relays = []
+        sensors = []
+        for relay in yaml_content.get('relays'):
+            if "name" in relay and "pin" in relay and "type" in relay:
+                relays.append(relay)
+            else:
+                logger.error("Wrong relay declaration : '{}'".format(relays))
+                sys.exit(0)
 
-        time_draw.text((0, 35), "Temp2: {}°".format(self.temp2), font=font20, fill=BLACK)
-        time_draw.text((125, 35), "Hum: {}%".format(self.moisture), font=font20, fill=BLACK)
+        for sensor in yaml_content.get('sensors'):
+            if "type" in sensor:
+                if sensor.get("type")=="dht22":
+                    if "name" in sensor and "pin" in sensor:
+                        sensors.append(sensor)
+                elif sensor.get("type")=="temp_1W":
+                    if "name" in sensor and "uid" in sensor:
+                        sensors.append(sensor)
+                elif sensor.get("type")=="water_level":
+                    if "pin" in sensor:
+                        sensors.append(sensor)
+                else:
+                    logger.error("Unknow sensor type")
+            else:
+                logger.error("Sensor type not given")
+        return PondPi(sensors, relays)
+    
+    def init_pin(self):
+        """ Init the GPIO PIN with the IN/OUT mode for each sensors/relays """
+        for sensor in self.sensors:
+            if sensor.get("type")=="dht22":
+                logger.debug("Set PIN {} IN : DHT22".format(sensor.get('pin')))
+                GPIO.setup(sensor.get('pin'), GPIO.IN)
+            elif sensor.get("type")=="temp_1W":
+                # Nothing
+                pass
+            elif sensor.get("type")=="water_level":
+                logger.debug("Set PIN {} IN : WaterLevel".format(sensor.get('pin')))
+                GPIO.setup(sensor.get('pin'), GPIO.IN)
 
-        time_draw.line([(0,62),(240,62)], fill = 0,width = 1)
-
-        time_draw.text((0, 65), "Pump 1: {}  ".format(("ON" if self.pump1 else "OFF")), font=font20, fill=BLACK)
-        time_draw.text((125, 65), "UV: {}  ".format(("ON" if self.UV else "OFF")), font=font20, fill=BLACK)
-
-        time_draw.text((0, 90), "Pump 2: {}  ".format(("ON" if self.pump2 else "OFF")), font=font20, fill=BLACK)
-        time_draw.text((125, 90), "Water: {}".format(("HIGH" if self.water_level else "LOW")), font=font20, fill=BLACK)
-        if not self.water_level:
-            time_draw.rectangle([(185, 88), (240, 115)], width=3)
-        epd.displayPartial(epd.getbuffer(time_image))
-
+        # Get from relays
+        for relay in self.relays:
+            logger.debug("Set PIN {} OUT".format(relay.get('pin')))
+            GPIO.setup(relay.get('pin'), GPIO.OUT)
+        
     def get_values(self):
-        # Get from captors
-        self.temp1 = random.randint(10, 14)
-        self.temp2 = random.randint(10, 14)
-        self.temp_air = random.randint(20, 25)
-        self.moisture = random.randint(20, 90)
-        # Get from GPIO
-        self.pump1 = get_GPIO(PIN_PUMP1)
-        self.pump2 = get_GPIO(PIN_PUMP2)
-        self.UV = get_GPIO(PIN_UV)
+        """ 
+        Get values from sensors and relay stats
+        Display the value on log file and return the line in order to be display for example
+        """
+        # Get from sensors
+        values = []
+        for sensor in self.sensors:
+            if sensor.get("type")=="dht22":
+                value = utils.sensors.get_DHT22_values(sensor.get('pin'))
+                values.append({'name': sensor.get('name')+'_T', 'value': value[0]})
+                values.append({'name': sensor.get('name')+'_H', 'value': value[1]})
+            elif sensor.get("type")=="temp_1W":
+                value = utils.sensors.get_temp_1w(sensor.get('uid'))
+                values.append({'name': sensor.get('name'), 'value': value})
+            elif sensor.get("type")=="water_level":
+                value = utils.sensors.get_water_level_status(sensor.get('pin'))
+                values.append({'name': 'WaterLevel', 'value': value})
+        # Get from relays
+        for relay in self.relays:
+            value = utils.relays.get_value(relay.get('pin'))
+            values.append({'name': relay.get('name'), 'value': value})
         # Get from captor
-        self.water_level = False if random.randint(0, 1)==0 else True
-        grapher.info("{},{},{},{},{},{},{},{}".format(self.temp1, self.temp2, self.temp_air, self.moisture, self.pump1, self.pump2, self.UV, self.water_level))
-
+        log_line = ", ".join([v['name']+":"+str(v['value']) for v in values])
+        grapher.info(log_line)
+        logger.debug("Values : {}".format(log_line))
+        return log_line
+        
     def cut_pumps(self):
+        """ Cut off all relay managing a pump """
         logger.info('WATER LOW -> Cut pumps')
-        self.pump1 = False
-        self.pump2 = False
-        self.UV = False
-        send_mail(EMAIL_RECIPIENT)
+        for r in self.relays:
+            if r.get("type") == "pump":
+                utils.relays.set_value(r.get("pin"), 0)
+        self.generate_backup_file()
 
+    def process_led(self, status):
+        """ 
+        Set the led status
+        Green : All is Ok
+        Red : The water level is low, normally the pump should be cut off
+        Green + Red : Should not append for the moment
+        """
+        if status=="OK":
+            for relay in self.relays:
+                if relay.get("type").lower()=="led_ok":
+                    self.set_value(relay.get("name"), "ON")
+                if relay.get("type").lower()=="led_ko":
+                    self.set_value(relay.get("name"), "OFF")
+        elif status=="KO":
+            for relay in self.relays:
+                if relay.get("type").lower()=="led_ok":
+                    self.set_value(relay.get("name"), "OFF")
+                if relay.get("type").lower()=="led_ko":
+                    self.set_value(relay.get("name"), "ON")
+        else:
+            for relay in self.relays:
+                self.set_value(relay.get("name"), "ON")
 
     def process_values(self):
-        if not self.water_level:
+        """ Get the water level and cut the pump + send email if needed. Then update the led status """
+        # Get only water_level sensor
+        water_levels = [s for s in self.sensors if s.get("type")=="water_level"]
+        # Do a "and" for all value, if one is to false -> water leakage.
+        values = [utils.sensors.get_water_level_status(s.get('pin')) for s in water_levels]
+        water_ok = reduce(lambda i, j: int(i) and int(j), values)
+        if not water_ok:
+            logger.info("Water not ok")
+            if self.declare_alert():
+                utils.mails.send_mail()
             self.cut_pumps()
+            self.process_led("KO")
+        else:
+            self.process_led("OK")
 
-    def set_values(self, pump1, pump2, UV):
-        if pump1:
-            logger.info("SET : pump1 -> {}".format(pump1))
-            self.pump1 = True if pump1=="ON" else False
-            set_GPIO(PIN_PUMP1, self.pump1)
-        if pump2:
-            logger.info("SET : pump2 -> {}".format(pump2))
-            self.pump2 = True if pump2=="ON" else False
-            set_GPIO(PIN_PUMP2, self.pump2)
-        if UV:
-            logger.info("SET : UV -> {}".format(UV))
-            self.UV = True if UV=="ON" else Fals
-            set_GPIO(PIN_UV, self.UV)
+    def declare_alert(self):
+        """ 
+        When it's called, that function create a ALERT_FILE with the time of the alert for the first time.
+        If the file doeas not exists the function will return True in order to the caller to send the email for example.
+        The date of the alert is also added into the ALERT_FILE_HISTORY in order to keep a trace.
+        """
+        res = False
+        now = datetime.now()
+        dt_string = now.strftime("%Y/%m/%d %H:%M:%S")
+        if not os.path.isfile(ALERT_FILE):
+            logger.info("Create alert file : {}".format(ALERT_FILE))
+            res = True
+            with open(ALERT_FILE, 'a') as f:
+                f.write(dt_string+"\n")
+        with open(ALERT_FILE_HISTORY, 'a+') as f:
+                f.write(dt_string+"\n")
+        return res
 
+    def reset_alert(self, restart_all_pump=False):
+        """
+        Remove the ALERT_FILE file.
+        If the restart_all_pump parameter is set to true, all the pump will be started.
+        At the end, the process_value function is called.
+        """
+        logger.info("reset alert")
+        if os.path.isfile(ALERT_FILE):
+            os.remove(ALERT_FILE)
+        if restart_all_pump:
+            logger.info("Restart all pumps")
+            for relay in self.relays:
+                if relay.get("type")=="pump":
+                    self.set_value(relay.get("name"), "ON")
+        self.process_values()
 
-def set_GPIO(pin, status):
-    print("Set {} for PIN {}".format(status, pin))
-    logger.debug("GPIO SET {} for PIN {}".format(status, pin))
-    GPIO.output(pin, status)
+    def set_value(self, name, status):
+        """ Set a value to a relay, the status should be "ON" or "OFF". """
+        status_bool = GPIO.HIGH if status == "ON" else GPIO.LOW
+        for relay in self.relays:
+            if relay.get("name") == name:
+                utils.relays.set_value(relay.get("pin"), status_bool)
+                self.generate_backup_file()
+                return True
+        logger.info("Name {} not found".format(name))
+        return False
 
-def get_GPIO(pin):
-    value = GPIO.input(pin)
-    logger.debug("Get value PIN {} : {}".format(pin, value))
-    return value
+    def generate_backup_file(self):
+        """ Generate a backup file, in case of failure, that file could be used to restore the state of the PIN """
+        logger.info("Generate Backup file")
+        with open(BACKUP_FILE, "w+") as f:
+            for r in self.relays:
+                line = "{}:{}\n".format(r.get("name"), utils.relays.get_value(r.get("pin")))
+                f.write(line)
+
+    def restore_backup_file(self):
+        """ Restore the state of PINs with the content of the backup file """
+        logger.info("Restore from Backup file")
+        try:
+            with open(BACKUP_FILE) as f:
+                for l in f.readlines():
+                    l = l.strip()
+                    name = l.split(':')[0]
+                    value = l.split(':')[1]
+                    for r in self.relays:
+                        if r.get("name") == name:
+                            utils.relays.set_value(r.get("pin"), GPIO.HIGH if value==1 else GPIO.LOW)
+        except IOError:
+            logger.error("No Backup File found")
+
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser()
-    #group_action = parser.add_mutually_exclusive_group()
+    # TODO check if reboot
 
-    subs = parser.add_subparsers()
+    parser = argparse.ArgumentParser()
+    subs = parser.add_subparsers()  
     subs.required = True
     subs.dest = 'action'
-    cron_parser = subs.add_parser('cron', help='Run the cron process')
-    clear_parser = subs.add_parser('clear', help='Clear screen')
+    cron_parser = subs.add_parser('init', help='Run the cron process')
+    cron_parser = subs.add_parser('restore', help='Restore from backup file')
+    clear_parser = subs.add_parser('cron', help='Clear screen')
+    clear_parser = subs.add_parser('reset', help='Reset pump and alerts')
+    clear_parser = subs.add_parser('print', help='Clear screen')
     manage_parser = subs.add_parser('manage', help='Manage Pumps and UV')
-    manage_parser.add_argument('--pump1', help='Manage pump1',required=False, choices=["ON", "OFF"])
-    manage_parser.add_argument('--pump2', help='Manage pump2',required=False, choices=["ON", "OFF"])
-    manage_parser.add_argument('--UV', help='Manage UV',required=False, choices=["ON", "OFF"])
-
+    manage_parser.add_argument('--name', help='Select device by name',required=True)
+    manage_parser.add_argument('--status', help='set status to device',required=True, choices=["ON", "OFF"])
     args = parser.parse_args()
 
-    pp = PondPi()
+    # Load the conf (list of relays and sensors) from the YAML file
+    pp = PondPi.load_from_yaml(yaml_content)   
 
+    # Init the board (IN/OUT) for each pin
+    pp.init_pin()
+
+    # Check if a backup file is present and restore pin relays status
+    if args.action == "restore":
+        pp.restore_backup_file()
+        sys.exit(0)
+
+    # Check water level, get values
     if args.action == "cron":
-        # cron: each 30s
-        pp.get_values()
         pp.process_values()
-        pp.update_screen()
+        sys.exit(0)
 
-    if args.action == "clear":
-        # cron each 1h
-        epd.init(epd.FULL_UPDATE)
-        epd.Clear(0xFF)
+    # Get values and print it
+    if args.action == "print":
+        values = pp.get_values()
+        print(values)
+        sys.exit(0)
 
+    # enable pumps and remove alert file
+    if args.action == "reset":
+        pp.reset_alert(restart_all_pump=False)
+        sys.exit(0)
+
+    # Change status of relais
     if args.action == "manage":
-        # Manual
-        ## Change pump/UV state
-        print(args.pump1, args.pump2, args.UV)
-        pp.set_values(args.pump1, args.pump2, args.UV)
+        pp.set_value(args.name, args.status)
+        sys.exit(0)

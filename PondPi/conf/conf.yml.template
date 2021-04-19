@@ -1,0 +1,54 @@
+
+global:
+  WIRE_DIR: "/sys/bus/w1/devices/{}/w1_slave"
+  BACKUP_FILE: "pin_backup.txt"
+  ALERT_FILE: "alert.txt"
+  ALERT_FILE_HISTORY: "alert_history.txt"
+
+mail:
+  host: smtp.mail.com
+  port: "587"
+  user: user@mail.com
+  password: password
+  recipients: 
+    - user2@mail.com
+
+# TODO
+logs:
+  graph:
+    name: graph.log
+  log:
+    name: activity.log
+
+relays:
+  - type: pump
+    name: Pump1
+    pin: 10
+  - type: pump
+    name: Pump2
+    pin: 9
+  - type: UV
+    name: UV
+    pin: 11
+  - type: led_OK
+    name: green
+    pin: 25
+  - type: led_KO
+    name: red
+    pin: 8
+
+sensors:
+  - type: dht22
+    name: Temp1
+    pin: 23
+  - type: dht22
+    name: Temp2
+    pin: 24
+  - type: temp_1W
+    name: Temp2
+    uid: 28-111111111111
+  - type: temp_1W
+    name: Temp3
+    uid: 28-111111111112
+  - type: water_level
+    pin: 17
