@@ -293,6 +293,7 @@ if __name__ == "__main__":
 
     # Check if a backup file is present and restore pin relays status
     if args.action == "restore":
+        #TODO: if a file is provided, take it as source.
         pp.restore_backup_file()
         sys.exit(0)
 
