@@ -15,6 +15,8 @@ import utils.mails
 import utils.sensors
 import utils.relays
 
+GPIO.setwarnings(False) # Ignore warning for now
+GPIO.setmode(GPIO.BCM)
 
 #######################################
 # YAML CONFIG FILE LOADING
