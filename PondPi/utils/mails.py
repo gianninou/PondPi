@@ -24,6 +24,7 @@ def read_template(filename):
         template_file_content = template_file.read()
     return Template(template_file_content)
 
+
 def send_mail():
     try:
         s = smtplib.SMTP(host=MAIL_HOST, port=MAIL_PORT)
@@ -37,9 +38,9 @@ def send_mail():
     mail_message_path = os.path.dirname(os.path.realpath(__file__))+"/../template/message.txt"
     message_template = read_template(mail_message_path)
     message = message_template.substitute()
-    msg['From']=MAIL_USER
-    msg['To']=", ".join(MAIL_RECIPIENTS)
-    msg['Subject']="PondPi alert"
+    msg['From'] = MAIL_USER
+    msg['To'] = ", ".join(MAIL_RECIPIENTS)
+    msg['Subject'] = "PondPi alert"
     # add in the message body
     msg.attach(MIMEText(message, 'plain'))
     # send the message via the server set up earlier.

@@ -1,12 +1,12 @@
 
 import Adafruit_DHT
 import logging
-import random
 import RPi.GPIO as GPIO
 
 logger = logging.getLogger('PondPiLog')
 
 WIRE_DIR = "/sys/bus/w1/devices/{}/w1_slave"
+
 
 # Return the temperature
 def get_temp_1w(sensor_id):
@@ -28,12 +28,11 @@ def get_DHT22_values(pin):
     try:
         humidity, temperature = Adafruit_DHT.read_retry(Adafruit_DHT.DHT22, pin)
         return int(temperature), int(humidity)
-    except RuntimeError as error:
+    except RuntimeError:
         logger.error("Get DHT22 error")
         return None
-    except Exception as error:
+    except Exception:
         logger.error("Get DHT22 exception")
-        dhtDevice.exit()
         return None
 
 

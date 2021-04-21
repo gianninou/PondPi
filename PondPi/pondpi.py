@@ -1,15 +1,10 @@
 
 import RPi.GPIO as GPIO
 
-GPIO.setwarnings(False) # Ignore warning for now
-GPIO.setmode(GPIO.BCM)
-
 import argparse
 import logging
 import os
-import random
 import sys
-import time
 import yaml
 
 from datetime import datetime
@@ -66,13 +61,14 @@ ALERT_FILE_HISTORY = yaml_content.get("global").get("ALERT_FILE_HISTORY")
 # PondPi class
 #######################################
 
+
 class PondPi:
 
     relays = None
     sensors = None
 
     def __init__(self, sensors, relays):
-        """ Initialize the object with a list of sensors and a list of relays"""
+        """Initialize the object with a list of sensors and a list of relays"""
         self.sensors = sensors
         self.relays = relays
 
@@ -90,13 +86,13 @@ class PondPi:
 
         for sensor in yaml_content.get('sensors'):
             if "type" in sensor:
-                if sensor.get("type")=="dht22":
+                if sensor.get("type") == "dht22":
                     if "name" in sensor and "pin" in sensor:
                         sensors.append(sensor)
-                elif sensor.get("type")=="temp_1W":
+                elif sensor.get("type") == "temp_1W":
                     if "name" in sensor and "uid" in sensor:
                         sensors.append(sensor)
-                elif sensor.get("type")=="water_level":
+                elif sensor.get("type") == "water_level":
                     if "pin" in sensor:
                         sensors.append(sensor)
                 else:
@@ -104,17 +100,17 @@ class PondPi:
             else:
                 logger.error("Sensor type not given")
         return PondPi(sensors, relays)
-    
+
     def init_pin(self):
         """ Init the GPIO PIN with the IN/OUT mode for each sensors/relays """
         for sensor in self.sensors:
-            if sensor.get("type")=="dht22":
+            if sensor.get("type") == "dht22":
                 logger.debug("Set PIN {} IN : DHT22".format(sensor.get('pin')))
                 GPIO.setup(sensor.get('pin'), GPIO.IN)
-            elif sensor.get("type")=="temp_1W":
+            elif sensor.get("type") == "temp_1W":
                 # Nothing
                 pass
-            elif sensor.get("type")=="water_level":
+            elif sensor.get("type") == "water_level":
                 logger.debug("Set PIN {} IN : WaterLevel".format(sensor.get('pin')))
                 GPIO.setup(sensor.get('pin'), GPIO.IN)
 
@@ -122,23 +118,24 @@ class PondPi:
         for relay in self.relays:
             logger.debug("Set PIN {} OUT".format(relay.get('pin')))
             GPIO.setup(relay.get('pin'), GPIO.OUT)
-        
+
     def get_values(self):
-        """ 
+        """
         Get values from sensors and relay stats
-        Display the value on log file and return the line in order to be display for example
+        Display the value on log file and returns
+        the line in order to be display for example
         """
         # Get from sensors
         values = []
         for sensor in self.sensors:
-            if sensor.get("type")=="dht22":
+            if sensor.get("type") == "dht22":
                 value = utils.sensors.get_DHT22_values(sensor.get('pin'))
                 values.append({'name': sensor.get('name')+'_T', 'value': value[0]})
                 values.append({'name': sensor.get('name')+'_H', 'value': value[1]})
-            elif sensor.get("type")=="temp_1W":
+            elif sensor.get("type") == "temp_1W":
                 value = utils.sensors.get_temp_1w(sensor.get('uid'))
                 values.append({'name': sensor.get('name'), 'value': value})
-            elif sensor.get("type")=="water_level":
+            elif sensor.get("type") == "water_level":
                 value = utils.sensors.get_water_level_status(sensor.get('pin'))
                 values.append({'name': 'WaterLevel', 'value': value})
         # Get from relays
@@ -150,7 +147,7 @@ class PondPi:
         grapher.info(log_line)
         logger.debug("Values : {}".format(log_line))
         return log_line
-        
+
     def cut_pumps(self):
         """ Cut off all relay managing a pump """
         logger.info('WATER LOW -> Cut pumps')
@@ -160,23 +157,23 @@ class PondPi:
         self.generate_backup_file()
 
     def process_led(self, status):
-        """ 
+        """
         Set the led status
         Green : All is Ok
         Red : The water level is low, normally the pump should be cut off
         Green + Red : Should not append for the moment
         """
-        if status=="OK":
+        if status == "OK":
             for relay in self.relays:
-                if relay.get("type").lower()=="led_ok":
+                if relay.get("type").lower() == "led_ok":
                     self.set_value(relay.get("name"), "ON")
-                if relay.get("type").lower()=="led_ko":
+                if relay.get("type").lower() == "led_ko":
                     self.set_value(relay.get("name"), "OFF")
-        elif status=="KO":
+        elif status == "KO":
             for relay in self.relays:
-                if relay.get("type").lower()=="led_ok":
+                if relay.get("type").lower() == "led_ok":
                     self.set_value(relay.get("name"), "OFF")
-                if relay.get("type").lower()=="led_ko":
+                if relay.get("type").lower() == "led_ko":
                     self.set_value(relay.get("name"), "ON")
         else:
             for relay in self.relays:
@@ -185,7 +182,7 @@ class PondPi:
     def process_values(self):
         """ Get the water level and cut the pump + send email if needed. Then update the led status """
         # Get only water_level sensor
-        water_levels = [s for s in self.sensors if s.get("type")=="water_level"]
+        water_levels = [s for s in self.sensors if s.get("type") == "water_level"]
         # Do a "and" for all value, if one is to false -> water leakage.
         values = [utils.sensors.get_water_level_status(s.get('pin')) for s in water_levels]
         water_ok = reduce(lambda i, j: int(i) and int(j), values)
@@ -199,10 +196,13 @@ class PondPi:
             self.process_led("OK")
 
     def declare_alert(self):
-        """ 
-        When it's called, that function create a ALERT_FILE with the time of the alert for the first time.
-        If the file doeas not exists the function will return True in order to the caller to send the email for example.
-        The date of the alert is also added into the ALERT_FILE_HISTORY in order to keep a trace.
+        """
+        When it's called, that function create a ALERT_FILE with
+        the time of the alert for the first time.
+        If the file doeas not exists the function will return True
+        in order to the caller to send the email for example.
+        The date of the alert is also added into
+        the ALERT_FILE_HISTORY in order to keep a trace.
         """
         res = False
         now = datetime.now()
@@ -213,7 +213,7 @@ class PondPi:
             with open(ALERT_FILE, 'a') as f:
                 f.write(dt_string+"\n")
         with open(ALERT_FILE_HISTORY, 'a+') as f:
-                f.write(dt_string+"\n")
+            f.write(dt_string+"\n")
         return res
 
     def reset_alert(self, restart_all_pump=False):
@@ -228,7 +228,7 @@ class PondPi:
         if restart_all_pump:
             logger.info("Restart all pumps")
             for relay in self.relays:
-                if relay.get("type")=="pump":
+                if relay.get("type") == "pump":
                     self.set_value(relay.get("name"), "ON")
         self.process_values()
 
@@ -244,11 +244,15 @@ class PondPi:
         return False
 
     def generate_backup_file(self):
-        """ Generate a backup file, in case of failure, that file could be used to restore the state of the PIN """
+        """
+        Generate a backup file, in case of failure,
+        that file could be used to restore the state of the PIN.
+        """
         logger.info("Generate Backup file")
         with open(BACKUP_FILE, "w+") as f:
             for r in self.relays:
-                line = "{}:{}\n".format(r.get("name"), utils.relays.get_value(r.get("pin")))
+                line = "{}:{}\n".format(r.get("name"),
+                                        utils.relays.get_value(r.get("pin")))
                 f.write(line)
 
     def restore_backup_file(self):
@@ -256,13 +260,13 @@ class PondPi:
         logger.info("Restore from Backup file")
         try:
             with open(BACKUP_FILE) as f:
-                for l in f.readlines():
-                    l = l.strip()
-                    name = l.split(':')[0]
-                    value = l.split(':')[1]
+                for line in f.readlines():
+                    linestriped = line.strip()
+                    name = linestriped.split(':')[0]
+                    value = linestriped.split(':')[1]
                     for r in self.relays:
                         if r.get("name") == name:
-                            utils.relays.set_value(r.get("pin"), GPIO.HIGH if value==1 else GPIO.LOW)
+                            utils.relays.set_value(r.get("pin"), GPIO.HIGH if value == 1 else GPIO.LOW)
         except IOError:
             logger.error("No Backup File found")
 
@@ -272,7 +276,7 @@ if __name__ == "__main__":
     # TODO check if reboot
 
     parser = argparse.ArgumentParser()
-    subs = parser.add_subparsers()  
+    subs = parser.add_subparsers()
     subs.required = True
     subs.dest = 'action'
     cron_parser = subs.add_parser('init', help='Run the cron process')
@@ -281,19 +285,21 @@ if __name__ == "__main__":
     clear_parser = subs.add_parser('reset', help='Reset pump and alerts')
     clear_parser = subs.add_parser('print', help='Clear screen')
     manage_parser = subs.add_parser('manage', help='Manage Pumps and UV')
-    manage_parser.add_argument('--name', help='Select device by name',required=True)
-    manage_parser.add_argument('--status', help='set status to device',required=True, choices=["ON", "OFF"])
+    manage_parser.add_argument('--name', help='Select device by name',
+                               required=True)
+    manage_parser.add_argument('--status', help='set status to device',
+                               required=True, choices=["ON", "OFF"])
     args = parser.parse_args()
 
     # Load the conf (list of relays and sensors) from the YAML file
-    pp = PondPi.load_from_yaml(yaml_content)   
+    pp = PondPi.load_from_yaml(yaml_content)
 
     # Init the board (IN/OUT) for each pin
     pp.init_pin()
 
     # Check if a backup file is present and restore pin relays status
     if args.action == "restore":
-        #TODO: if a file is provided, take it as source.
+        # TODO: if a file is provided, take it as source.
         pp.restore_backup_file()
         sys.exit(0)
 
