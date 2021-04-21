@@ -1,0 +1,5 @@
+Adafruit-DHT==1.4.0
+Adafruit-Python-DHT==1.4.0
+pkg-resources==0.0.0
+PyYAML==5.4.1
+RPi.GPIO==0.7.0
