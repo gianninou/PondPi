@@ -4,3 +4,4 @@ venv/
 *.pyc
 PondPi/conf/conf.yml
 PondPi/tests/
+.vscode
