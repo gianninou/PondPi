@@ -25,7 +25,6 @@ A virtual env could be created befor in order to have a clean environment for th
 Then install the requirements with `pip install -r requirements.txt`
 
 
-
 ## Usage
 
 ### Configuration file
@@ -72,8 +71,6 @@ Then add : `*/15 * * * * /home/pi/PondPi/pondpi-venv/bin/python /home/pi/PondPi/
 ## Improvements
 
 - Take pictures.
-- Add a file to the restore command.
-- Add a backup command with an output file specified.
 - Generate some report about collected sensor data (temp/moisture/etc)
 - Create a REST API.
 

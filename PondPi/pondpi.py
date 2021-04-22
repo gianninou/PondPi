@@ -245,30 +245,35 @@ class PondPi:
         logger.info("Name {} not found".format(name))
         return False
 
-    def generate_backup_file(self):
+    def generate_backup_file(self, path=None):
         """
         Generate a backup file, in case of failure,
         that file could be used to restore the state of the PIN.
         """
         logger.info("Generate Backup file")
-        with open(BACKUP_FILE, "w+") as f:
+        if not path:
+            path = BACKUP_FILE
+        print(path)
+        with open(path, "w+") as f:
             for r in self.relays:
                 line = "{}:{}\n".format(r.get("name"),
                                         utils.relays.get_value(r.get("pin")))
                 f.write(line)
 
-    def restore_backup_file(self):
+    def restore_backup_file(self, path=None):
         """ Restore the state of PINs with the content of the backup file """
         logger.info("Restore from Backup file")
+        if not path:
+            path = BACKUP_FILE
         try:
-            with open(BACKUP_FILE) as f:
+            with open(path) as f:
                 for line in f.readlines():
                     linestriped = line.strip()
                     name = linestriped.split(':')[0]
                     value = linestriped.split(':')[1]
                     for r in self.relays:
                         if r.get("name") == name:
-                            utils.relays.set_value(r.get("pin"), GPIO.HIGH if value == 1 else GPIO.LOW)
+                            utils.relays.set_value(r.get("pin"), GPIO.HIGH if value == "1" else GPIO.LOW)
         except IOError:
             logger.error("No Backup File found")
 
@@ -281,12 +286,20 @@ if __name__ == "__main__":
     subs = parser.add_subparsers()
     subs.required = True
     subs.dest = 'action'
-    cron_parser = subs.add_parser('init', help='Run the cron process')
-    cron_parser = subs.add_parser('backup', help='Create the backup file')
-    cron_parser = subs.add_parser('restore', help='Restore from backup file')
-    clear_parser = subs.add_parser('cron', help='Clear screen')
-    clear_parser = subs.add_parser('reset', help='Reset pump and alerts')
-    clear_parser = subs.add_parser('print', help='Clear screen')
+    init_parser = subs.add_parser('init', help='Run the cron process')
+    backup_parser = subs.add_parser('backup', help='Create the backup file')
+    backup_parser.add_argument('--path', help='''Set the filepath name to use,
+                               by default it will use the BACKUP_FILE
+                               param in the conf file''',
+                               required=False)
+    restore_parser = subs.add_parser('restore', help='Restore from backup file')
+    restore_parser.add_argument('--path', help='''Set the filepath name to use,
+                               by default it will use the BACKUP_FILE
+                               param in the conf file''',
+                               required=False)
+    cron_parser = subs.add_parser('cron', help='Clear screen')
+    reset_parser = subs.add_parser('reset', help='Reset pump and alerts')
+    print_parser = subs.add_parser('print', help='Clear screen')
     manage_parser = subs.add_parser('manage', help='Manage Pumps and UV')
     manage_parser.add_argument('--name', help='Select device by name',
                                required=True)
@@ -302,14 +315,14 @@ if __name__ == "__main__":
 
     # Create a backup file
     if args.action == "backup":
-        # TODO: if a file is provided, take it as source.
-        pp.generate_backup_file()
+        path = args.path
+        pp.generate_backup_file(path)
         sys.exit(0)
 
     # Check if a backup file is present and restore pin relays status
     if args.action == "restore":
-        # TODO: if a file is provided, take it as source.
-        pp.restore_backup_file()
+        path = args.path
+        pp.restore_backup_file(path)
         sys.exit(0)
 
     # Check water level, get values
