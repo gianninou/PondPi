@@ -17,8 +17,14 @@ Finally, if a camera is installed, pictures could be made of the pond or the fil
 
 ## Installation
 
+The git folder was copied into the `/home/pi/PondPi` folder.
+
+A virtual env should be created : `python -m venv /home/pi/PondPi/pondpi-venv`
+
 A virtual env could be created befor in order to have a clean environment for the application.  
 Then install the requirements with `pip install -r requirements.txt`
+
+
 
 ## Usage
 
@@ -53,6 +59,15 @@ TODO : take a file in input in order to set the system at a special state (in ca
 
 #### reset
 The reset command allows to remove the alert state of the application. The alerte state is raised by the cron command if the water level is low. When a check about the water level and the potential leak is made, the reset command should be used in order to remove the alert state and restore the system in a stable state.
+
+### Crontable
+
+The following cron line should be added to the pi user (if the pi is the user that used the tool)
+
+Edit the crontab for the pi user with : `sudo crontab -u pi -e`
+
+Then add : `*/15 * * * * /home/pi/PondPi/pondpi-venv/bin/python /home/pi/PondPi/PondPi/pondpi.py cron >/dev/null 2>&1`
+
 
 ## Improvements
 
