@@ -282,6 +282,7 @@ if __name__ == "__main__":
     subs.required = True
     subs.dest = 'action'
     cron_parser = subs.add_parser('init', help='Run the cron process')
+    cron_parser = subs.add_parser('backup', help='Create the backup file')
     cron_parser = subs.add_parser('restore', help='Restore from backup file')
     clear_parser = subs.add_parser('cron', help='Clear screen')
     clear_parser = subs.add_parser('reset', help='Reset pump and alerts')
@@ -298,6 +299,12 @@ if __name__ == "__main__":
 
     # Init the board (IN/OUT) for each pin
     pp.init_pin()
+
+    # Create a backup file
+    if args.action == "backup":
+        # TODO: if a file is provided, take it as source.
+        pp.generate_backup_file()
+        sys.exit(0)
 
     # Check if a backup file is present and restore pin relays status
     if args.action == "restore":
