@@ -24,6 +24,8 @@ A virtual env should be created : `python -m venv /home/pi/PondPi/pondpi-venv`
 A virtual env could be created befor in order to have a clean environment for the application.  
 Then install the requirements with `pip install -r requirements.txt`
 
+Install the package : `sudo apt-get install libatlas-base-dev libopenjp2-7`
+
 
 ## Usage
 
@@ -65,12 +67,18 @@ The following cron line should be added to the pi user (if the pi is the user th
 
 Edit the crontab for the pi user with : `sudo crontab -u pi -e`
 
-Then add : `*/15 * * * * /home/pi/PondPi/pondpi-venv/bin/python /home/pi/PondPi/PondPi/pondpi.py cron >/dev/null 2>&1`
+Then add the following line. You can remove the `--ftp` flags if you are no using the FTP.
+The first line is for the water level check, the second for taking a screenshot and the last to create a gif with all image from yesterday (and clean it). 
+
+<code>
+*/15 * * * * /home/pi/PondPi/pondpi-venv/bin/python /home/pi/PondPi/PondPi/pondpi.py cron >/dev/null 2>&1  
+*/15 * * * * /home/pi/PondPi/pondpi-venv/bin/python /home/pi/PondPi/PondPi/pondpi.py camera --capture --ftp >/dev/null 2>&1  
+0 1 * * * /home/pi/PondPi/pondpi-venv/bin/python /home/pi/PondPi/PondPi/pondpi.py camera --gif-yesterday --ftp >/dev/null 2>&1  
+</code>
 
 
 ## Improvements
 
-- Take pictures.
 - Generate some report about collected sensor data (temp/moisture/etc)
 - Create a REST API.
 

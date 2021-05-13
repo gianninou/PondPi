@@ -7,13 +7,17 @@ import os
 import sys
 import yaml
 
-from datetime import datetime
+
+from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from functools import reduce
 
 import utils.mails
 import utils.sensors
 import utils.relays
+import utils.camera
+import utils.ftp
+
 
 GPIO.setwarnings(False)  # Ignore warning for now
 GPIO.setmode(GPIO.BCM)
@@ -273,6 +277,7 @@ class PondPi:
                     value = linestriped.split(':')[1]
                     for r in self.relays:
                         if r.get("name") == name:
+                            print("{} : {} : {} : {}".format(name, r.get("pin"), value, GPIO.HIGH if value == "1" else GPIO.LOW))
                             utils.relays.set_value(r.get("pin"), GPIO.HIGH if value == "1" else GPIO.LOW)
         except IOError:
             logger.error("No Backup File found")
@@ -294,12 +299,19 @@ if __name__ == "__main__":
                                required=False)
     restore_parser = subs.add_parser('restore', help='Restore from backup file')
     restore_parser.add_argument('--path', help='''Set the filepath name to use,
-                               by default it will use the BACKUP_FILE
-                               param in the conf file''',
-                               required=False)
+                                by default it will use the BACKUP_FILE
+                                param in the conf file''',
+                                required=False)
     cron_parser = subs.add_parser('cron', help='Clear screen')
     reset_parser = subs.add_parser('reset', help='Reset pump and alerts')
     print_parser = subs.add_parser('print', help='Clear screen')
+    camera_parser = subs.add_parser('camera', help='Take pictures')
+    camera_parser.add_argument('--capture', help='''Capture photo''',
+                               required=False, action='store_true')
+    camera_parser.add_argument('--ftp', help='''Enable send the picture to FTP''',
+                               required=False, action='store_true')
+    camera_parser.add_argument('--gif-yesterday', help='''Generate gif for yesterday''',
+                               required=False, action='store_true')
     manage_parser = subs.add_parser('manage', help='Manage Pumps and UV')
     manage_parser.add_argument('--name', help='Select device by name',
                                required=True)
@@ -315,12 +327,14 @@ if __name__ == "__main__":
 
     # Create a backup file
     if args.action == "backup":
+        # TODO: if a file is provided, take it as source.
         path = args.path
         pp.generate_backup_file(path)
         sys.exit(0)
 
     # Check if a backup file is present and restore pin relays status
     if args.action == "restore":
+        # TODO: if a file is provided, take it as source.
         path = args.path
         pp.restore_backup_file(path)
         sys.exit(0)
@@ -334,6 +348,29 @@ if __name__ == "__main__":
     if args.action == "print":
         values = pp.get_values()
         print(values)
+        sys.exit(0)
+
+    # Get values and print it
+    if args.action == "camera":
+        # Take picture
+        if args.capture:
+            filename = utils.camera.Camera.capture()
+            if args.ftp:  # Store in FTP if needed
+                if filename:
+                    utils.ftp.FTP.send_file(filename)
+                else:
+                    print("FILENAME_NULL")
+        # Generate yesterday gif
+        if args.gif_yesterday:
+            now = datetime.now() - timedelta(1)
+            yesterday = now.strftime("%Y-%m-%d")
+            gif_name = utils.camera.Camera.generate_gif(yesterday)
+            if args.ftp:  # Store in FTP if needed
+                if gif_name:
+                    utils.ftp.FTP.send_file(gif_name)
+                else:
+                    print("GIFNAME_NULL")
+
         sys.exit(0)
 
     # enable pumps and remove alert file
